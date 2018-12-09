@@ -39,7 +39,7 @@ Transform:
   m_PrefabInternal: {fileID: 100100000}
   m_GameObject: {fileID: 1141607721575862}
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: -0.19850826, y: 0.604023, z: -0.2243433}
+  m_LocalPosition: {x: -39.183475, y: 19.554077, z: 15.982071}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_Children: []
   m_Father: {fileID: 0}
@@ -73,9 +73,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   m_SerializedData:
-    Value: 0.02
-    drag: 0.01
-    Speed: {x: 0.03, y: 0}
+    Value: 2
 --- !u!114 &114491289640511880
 MonoBehaviour:
   m_ObjectHideFlags: 1
@@ -117,8 +115,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   m_SerializedData:
-    mesh: {fileID: 10210, guid: 0000000000000000e000000000000000, type: 0}
-    material: {fileID: 2100000, guid: 016cb934dd03f074188fe0786172d45b, type: 2}
+    mesh: {fileID: 4300002, guid: cc864dc7cb342244690f92a4791bb94b, type: 3}
+    material: {fileID: 2100000, guid: 1dc38d9a9bb57a24b9ab5019c651f99d, type: 2}
     subMesh: 0
     castShadows: 0
     receiveShadows: 0
@@ -135,6 +133,6 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   m_SerializedData:
     Value:
-      x: 0.05
-      y: 0.05
-      z: 0.05
+      x: 0.6
+      y: 0.6
+      z: 0.6

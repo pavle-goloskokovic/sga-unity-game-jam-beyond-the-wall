@@ -1,7 +1,9 @@
 ﻿using System.Collections;
 using System.Collections.Generic;
+using System.Threading;
 using Unity.Burst;
 using Unity.Collections;
+using Unity.Collections.LowLevel.Unsafe;
 using Unity.Entities;
 using Unity.Jobs;
 using Unity.Mathematics;
@@ -10,89 +12,142 @@ using Unity.Transforms;
 using UnityEngine;
 
 public class MovementSystem : JobComponentSystem {
-
-    [BurstCompileAttribute(Accuracy = Accuracy.Low)]
-    struct MovementSystemJob : IJobProcessComponentData<Position, MovementSpeed>
+    public NativeArray<int> pathMatrix;
+    bool pathFindingFlag = false;
+    //[BurstCompileAttribute(Accuracy = Accuracy.Low)]
+    struct MovementSystemJob : IJobProcessComponentData<Position, Rotation, MovementSpeed>
     {
+        [NativeDisableUnsafePtrRestriction]
         public float dt;
-        public float3 mousePos;
-        public bool reverse;
-        public bool explode;
-        public bool boost;
-        public bool sw;
+        [NativeDisableParallelForRestriction] public NativeArray<int> zombieBuckets;
+        [NativeDisableParallelForRestriction] public NativeArray<int> iceStrengths;
+        [NativeDisableParallelForRestriction] public NativeArray<int> pathMatrix;
+        public bool pathFindingFlag;
 
-        public void Execute(ref Position pos, ref MovementSpeed speed)
+        unsafe public void Execute(ref Position pos, ref Rotation rotation, ref MovementSpeed speed)
         {
             float3 a = pos.Value;
-            Vector2 vec = new Vector2(mousePos.x - a.x, mousePos.y - a.y);
 
-            float dist = vec.magnitude;
-            if (dist > 2) {
+            int myIndex = GameMenager.GetIndex(a.x, a.z);
+            int pathIndex = -1;
+            if (myIndex != -1) {
+
+            int curentDistance = pathMatrix[myIndex];
+                List<int> neighbour = GameMenager.GetNeighbourPath(myIndex);
+                foreach (var item in neighbour)
+                {
+                    if (pathMatrix[item] == curentDistance - 1) {
+                        pathIndex = item;
+                        break;
+                    }
+                }
+            }
+
+            Vector2 vel;
+
+            if (pathIndex != -1 && pathFindingFlag) {
+                int x = pathIndex % 100 - 50;
+                int y = pathIndex / 100 - 50;
+
+                vel = new Vector2(x-a.x, y-a.z);
+            }
+            else {
+                vel = new Vector2(-a.x, -a.z);
 
             }
 
-            float tmp = speed.Value;
-            if (boost)
+            //pomeri napred
+            vel.Normalize();
+            vel *= speed.Value * dt;
+            a.x += vel.x;
+            a.z += vel.y;
+
+
+            rotation.Value = quaternion.LookRotation(new float3 { y = 1 }, new float3{ x=-vel.x, z=-vel.y});
+
+            int index = GameMenager.GetIndex(a.x, a.z);
+
+            if (index < 0)
             {
-                tmp *= 10;
+                pos.Value = a;
+                return;
             }
-            float mag =  tmp / ((float)math.pow(dist, 2));
 
-            if (mag > 0.05f)
-                mag = 0.05f;
-
-
-            if (dist < 0.5f && !explode)
+            if (iceStrengths[index] <= 500)
             {
-                speed.Speed *= 1 - speed.drag*3;
-                mag /= 2f;
+                //int* ptr2 = (int*)zombieBuckets.GetUnsafePtr() + index;
+                //Interlocked.Increment(ref *ptr2);
+                vel.Normalize();
+                vel *= -1;
+                a.x = vel.x * 80;
+                a.z = vel.y * 80;
+                pos.Value = a;
+                return;
             }
 
-            if (sw)
-            {
-                speed.Speed *= -1;
-                mag *= -1;
-            }
-            if (explode)
-            {
-                mag *= -3;
-            }
+            int* ptr = (int*)zombieBuckets.GetUnsafePtr()+index;
+            Interlocked.Increment(ref *ptr);
 
-            vec.Normalize();
-            vec *= mag;
 
-            speed.Speed *= 1 - speed.drag;
-            speed.Speed += vec;
-
-            a.x += speed.Speed.x;
-            a.y += speed.Speed.y;
-
-            
 
             pos.Value = a;
         }
     }
-    bool reverse = false;
+
     protected override JobHandle OnUpdate(JobHandle inputDeps)
     {
-        Vector3 mousepos = Input.mousePosition;
-        bool sw = false;
-        if (Input.GetMouseButtonDown(1)) {
-            sw = true;
-            reverse = !reverse; 
+
+        for (int i = 0; i < GameMenager.zombieBuckets.Length; i++)
+        {
+            GameMenager.zombieBuckets[i] = 0;
         }
-        bool explode = Input.GetMouseButtonDown(0);
-        bool boost = Input.GetMouseButton(2);
-        mousepos.z = -Camera.allCameras[0].transform.position.z;
-        mousepos = Camera.allCameras[0].ScreenToWorldPoint(mousepos);
+        pathMatrix = GameMenager.pathMatrix;
+
+        if (Input.GetKeyDown("space")) {
+            pathFindingFlag = !pathFindingFlag;
+        }
+        if (pathFindingFlag)
+            CalculatePath();
+
         var job = new MovementSystemJob() {
             dt = Time.deltaTime,
-            mousePos = mousepos,
-            reverse = reverse,
-            explode = explode,
-            boost = boost,
-            sw = sw
+            zombieBuckets = GameMenager.zombieBuckets,
+            iceStrengths = GameMenager.iceStrengths,
+            pathMatrix = pathMatrix,
+            pathFindingFlag = pathFindingFlag
         };
         return job.Schedule(this, inputDeps);
+    }
+
+    void CalculatePath()
+    {
+        
+        for (int i = 0; i < pathMatrix.Length; i++)
+        {
+            pathMatrix[i] = -1;
+        }
+        List<int> neighbours = new List<int>();
+        int firstIndex = GameMenager.GetIndex(0, 0);
+        neighbours.Add(firstIndex);
+        pathMatrix[firstIndex] = 0;
+        bool a = true;
+        while (neighbours.Count > 0)
+        {
+            int index = neighbours[0];
+            List<int> newNeighbours = GameMenager.GetNeighbourPath(index);
+            foreach (var item in newNeighbours)
+            {
+                if (item>=10000 || item<0 ||pathMatrix[item] != -1)
+                    continue;
+                if (GameMenager.iceStrengths[item] < 500)
+                    continue;
+                pathMatrix[item] = pathMatrix[index] + 1;
+                if (a)
+                    pathMatrix[item]--;
+                neighbours.Add(item);
+            }
+            a = false;
+            neighbours.RemoveAt(0);
+        }
     }
 }
